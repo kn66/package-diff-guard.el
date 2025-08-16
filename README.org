@@ -11,6 +11,10 @@ Package Diff Guard is an Emacs security tool that shows diffs for all package up
 - 📊 Displays file-by-file changes, new files, and deleted files
 - ⚡ Efficient TAR extraction for package analysis
 
+* Screenshots
+
+[[./screenshots/screenshot1.png]]
+
 * Installation
 
 1. Place ~package-diff-guard.el~ in your Emacs load path

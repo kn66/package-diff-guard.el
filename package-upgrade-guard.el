@@ -1,4 +1,4 @@
-;;; package-diff-guard.el --- Simple security checker for third-party packages -*- lexical-binding: t; -*-
+;;; package-upgrade-guard.el --- Simple security checker for third-party packages -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2025 Free Software Foundation, Inc.
 
@@ -19,85 +19,85 @@
 (require 'vc-git)
 
 ;; Constants
-(defconst package-diff-guard--tar-header-size 512
+(defconst package-upgrade-guard--tar-header-size 512
   "Size of TAR header in bytes.")
 
-(defconst package-diff-guard--tar-filename-offset 0
+(defconst package-upgrade-guard--tar-filename-offset 0
   "Offset for filename in TAR header.")
 
-(defconst package-diff-guard--tar-filename-size 100
+(defconst package-upgrade-guard--tar-filename-size 100
   "Size of filename field in TAR header.")
 
-(defconst package-diff-guard--tar-size-offset 124
+(defconst package-upgrade-guard--tar-size-offset 124
   "Offset for file size in TAR header.")
 
-(defconst package-diff-guard--tar-size-length 12
+(defconst package-upgrade-guard--tar-size-length 12
   "Length of file size field in TAR header.")
 
-(defconst package-diff-guard--max-diff-lines 20
+(defconst package-upgrade-guard--max-diff-lines 20
   "Maximum number of diff lines to show.")
 
-(defconst package-diff-guard--file-preview-size 500
+(defconst package-upgrade-guard--file-preview-size 500
   "Maximum bytes to show in file preview.")
 
-(defconst package-diff-guard--line-truncate-length 80
+(defconst package-upgrade-guard--line-truncate-length 80
   "Maximum length for truncated lines in diff output.")
 
-(defconst package-diff-guard--buffer-names
+(defconst package-upgrade-guard--buffer-names
   '("*Package Security Diff*"
     "*Package VC Diff*"
     "*Package Contents*")
   "List of buffer names used by package security check.")
 
-(defgroup package-diff-guard nil
+(defgroup package-upgrade-guard nil
   "Security checking for package upgrades."
   :group 'package
-  :prefix "package-diff-guard-")
+  :prefix "package-upgrade-guard-")
 
-(defcustom package-diff-guard-enabled t
+(defcustom package-upgrade-guard-enabled t
   "Whether to perform security checks before installing packages."
   :type 'boolean
-  :group 'package-diff-guard)
+  :group 'package-upgrade-guard)
 
-(defcustom package-diff-guard-temp-dir nil
+(defcustom package-upgrade-guard-temp-dir nil
   "Directory for temporarily storing packages during security checks."
   :type '(choice (const :tag "Default" nil) (directory :tag "Directory"))
-  :group 'package-diff-guard)
+  :group 'package-upgrade-guard)
 
-(defvar package-diff-guard--temp-dir nil
+(defvar package-upgrade-guard--temp-dir nil
   "Actual temporary directory used for security checks.")
 
-(defun package-diff-guard--get-temp-dir ()
+(defun package-upgrade-guard--get-temp-dir ()
   "Get or create the temporary directory for security checks."
-  (unless package-diff-guard--temp-dir
-    (setq package-diff-guard--temp-dir
-          (or package-diff-guard-temp-dir
-              (expand-file-name "package-diff-guard"
+  (unless package-upgrade-guard--temp-dir
+    (setq package-upgrade-guard--temp-dir
+          (or package-upgrade-guard-temp-dir
+              (expand-file-name "package-upgrade-guard"
                                 temporary-file-directory))))
   (condition-case err
       (progn
-        (unless (file-exists-p package-diff-guard--temp-dir)
-          (make-directory package-diff-guard--temp-dir t))
-        package-diff-guard--temp-dir)
+        (unless (file-exists-p package-upgrade-guard--temp-dir)
+          (make-directory package-upgrade-guard--temp-dir t))
+        package-upgrade-guard--temp-dir)
     (error
      (error
       "Failed to create temporary directory %s: %s"
-      package-diff-guard--temp-dir
+      package-upgrade-guard--temp-dir
       (error-message-string err)))))
 
-(defun package-diff-guard--cleanup-temp-dir ()
+(defun package-upgrade-guard--cleanup-temp-dir ()
   "Clean up temporary directory."
-  (when (and package-diff-guard--temp-dir
-             (file-exists-p package-diff-guard--temp-dir))
+  (when (and package-upgrade-guard--temp-dir
+             (file-exists-p package-upgrade-guard--temp-dir))
     (condition-case err
-        (delete-directory package-diff-guard--temp-dir t)
+        (delete-directory package-upgrade-guard--temp-dir t)
       (error
        (message "Warning: Failed to cleanup temp directory %s: %s"
-                package-diff-guard--temp-dir
+                package-upgrade-guard--temp-dir
                 (error-message-string err))))))
 
 
-(defun package-diff-guard--safe-read-file
+(defun package-upgrade-guard--safe-read-file
     (file-path &optional max-size)
   "Safely read FILE-PATH with optional MAX-SIZE limit, returning content or error message."
   (condition-case err
@@ -109,18 +109,18 @@
     (error
      (format "[Error reading file: %s]" (error-message-string err)))))
 
-(defun package-diff-guard--clean-tar-string (raw-string)
+(defun package-upgrade-guard--clean-tar-string (raw-string)
   "Clean RAW-STRING by removing null bytes and trimming whitespace."
   (string-trim (replace-regexp-in-string "\0" "" raw-string)))
 
-(defun package-diff-guard--read-tar-header-field
+(defun package-upgrade-guard--read-tar-header-field
     (start offset length)
   "Read tar header field from buffer starting at START with OFFSET and LENGTH."
   (let ((raw
          (buffer-substring (+ start offset) (+ start offset length))))
-    (package-diff-guard--clean-tar-string raw)))
+    (package-upgrade-guard--clean-tar-string raw)))
 
-(defun package-diff-guard--parse-tar-size (size-str)
+(defun package-upgrade-guard--parse-tar-size (size-str)
   "Parse SIZE-STR as octal number, returning 0 on error."
   (if (string-empty-p size-str)
       0
@@ -129,14 +129,14 @@
       (error
        0))))
 
-(defun package-diff-guard--clean-tar-filename (filename)
+(defun package-upgrade-guard--clean-tar-filename (filename)
   "Clean FILENAME by removing top-level directory to avoid double nesting."
   (let ((filename-parts (split-string filename "/")))
     (if (> (length filename-parts) 1)
         (mapconcat 'identity (cdr filename-parts) "/")
       filename)))
 
-(defun package-diff-guard--extract-tar-file
+(defun package-upgrade-guard--extract-tar-file
     (filename size extract-dir)
   "Extract single file from tar with FILENAME, SIZE to EXTRACT-DIR."
   (when (and (> size 0)
@@ -144,7 +144,7 @@
              (< (+ (point) size) (point-max)))
     (condition-case err
         (let* ((filename-clean
-                (package-diff-guard--clean-tar-filename filename))
+                (package-upgrade-guard--clean-tar-filename filename))
                (file-path
                 (expand-file-name filename-clean extract-dir))
                (file-data
@@ -161,20 +161,20 @@
                 filename
                 (error-message-string err))))))
 
-(defun package-diff-guard--calculate-next-tar-position
+(defun package-upgrade-guard--calculate-next-tar-position
     (header-start size)
   "Calculate next tar entry position from HEADER-START and SIZE."
   (let ((next-pos
-         (+ header-start package-diff-guard--tar-header-size
+         (+ header-start package-upgrade-guard--tar-header-size
             (if (> size 0)
-                (* package-diff-guard--tar-header-size
+                (* package-upgrade-guard--tar-header-size
                    (ceiling (/ size 512.0)))
               0))))
     (if (<= next-pos header-start)
         (point-max)
       next-pos)))
 
-(defun package-diff-guard--extract-tar-manually
+(defun package-upgrade-guard--extract-tar-manually
     (tar-file extract-dir)
   "Extract TAR-FILE to EXTRACT-DIR with proper filename handling."
   (make-directory extract-dir t)
@@ -185,13 +185,13 @@
     (goto-char (point-min))
 
     (while (< (point)
-              (- (point-max) package-diff-guard--tar-header-size))
+              (- (point-max) package-upgrade-guard--tar-header-size))
       (let* ((header-start (point))
              (filename
-              (package-diff-guard--read-tar-header-field
+              (package-upgrade-guard--read-tar-header-field
                header-start
-               package-diff-guard--tar-filename-offset
-               package-diff-guard--tar-filename-size)))
+               package-upgrade-guard--tar-filename-offset
+               package-upgrade-guard--tar-filename-size)))
 
         ;; Stop if empty filename (end of archive)
         (if (string-empty-p filename)
@@ -199,29 +199,29 @@
 
           ;; Read file size from header
           (let* ((size-str
-                  (package-diff-guard--read-tar-header-field
+                  (package-upgrade-guard--read-tar-header-field
                    header-start
-                   package-diff-guard--tar-size-offset
-                   package-diff-guard--tar-size-length))
+                   package-upgrade-guard--tar-size-offset
+                   package-upgrade-guard--tar-size-length))
                  (size
-                  (package-diff-guard--parse-tar-size size-str)))
+                  (package-upgrade-guard--parse-tar-size size-str)))
 
             ;; Move to data section
             (goto-char
-             (+ header-start package-diff-guard--tar-header-size))
+             (+ header-start package-upgrade-guard--tar-header-size))
 
             ;; Extract file if it's a regular file
-            (package-diff-guard--extract-tar-file
+            (package-upgrade-guard--extract-tar-file
              filename size extract-dir)
 
             ;; Move to next entry
             (goto-char
-             (package-diff-guard--calculate-next-tar-position
+             (package-upgrade-guard--calculate-next-tar-position
               header-start size))))))))
 
-(defun package-diff-guard--download-package-safely (pkg-desc)
+(defun package-upgrade-guard--download-package-safely (pkg-desc)
   "Download package PKG-DESC to temporary directory without installing."
-  (let* ((temp-dir (package-diff-guard--get-temp-dir))
+  (let* ((temp-dir (package-upgrade-guard--get-temp-dir))
          (pkg-name (package-desc-name pkg-desc))
          (pkg-version
           (package-version-join (package-desc-version pkg-desc)))
@@ -248,7 +248,7 @@
         (cond
          ((string-suffix-p ".tar" file)
           ;; Handle tar files
-          (package-diff-guard--extract-tar-manually
+          (package-upgrade-guard--extract-tar-manually
            temp-file temp-pkg-dir)
           (delete-file temp-file))
          ((string-suffix-p ".el" file)
@@ -264,7 +264,7 @@
 
         temp-pkg-dir))))
 
-(defun package-diff-guard--find-installed-package-dir (pkg-name)
+(defun package-upgrade-guard--find-installed-package-dir (pkg-name)
   "Find installed third-party package directory for PKG-NAME."
   (let ((pkg-name-str (symbol-name pkg-name))
         (elpa-dirs (list package-user-dir)))
@@ -290,7 +290,7 @@
                     (file-name-nondirectory dir)))
               (throw 'found dir))))))))
 
-(defun package-diff-guard--get-version-from-dir (pkg-dir)
+(defun package-upgrade-guard--get-version-from-dir (pkg-dir)
   "Extract version from package directory name."
   (when pkg-dir
     (let ((dir-name (file-name-nondirectory pkg-dir)))
@@ -298,12 +298,12 @@
              "-\\([0-9][^-]*\\)\\(?:-[0-9]+\\)?$" dir-name)
         (match-string 1 dir-name)))))
 
-(defun package-diff-guard--show-simple-diff
+(defun package-upgrade-guard--show-simple-diff
     (old-content new-content)
   "Show a simple line-by-line comparison when full diff fails."
   (let ((old-lines (split-string old-content "\n" t))
         (new-lines (split-string new-content "\n" t))
-        (max-lines package-diff-guard--max-diff-lines)
+        (max-lines package-upgrade-guard--max-diff-lines)
         (shown-lines 0))
 
     (insert
@@ -336,13 +336,13 @@
               "  -%d: %s\n"
               (1+ i)
               (truncate-string-to-width
-               old-line package-diff-guard--line-truncate-length)))
+               old-line package-upgrade-guard--line-truncate-length)))
             (insert
              (format
               "  +%d: %s\n"
               (1+ i)
               (truncate-string-to-width
-               new-line package-diff-guard--line-truncate-length)))
+               new-line package-upgrade-guard--line-truncate-length)))
             (setq shown-lines (+ shown-lines 2)))
            ;; Line deleted
            ((and old-line (not new-line))
@@ -351,7 +351,7 @@
               "  -%d: %s\n"
               (1+ i)
               (truncate-string-to-width
-               old-line package-diff-guard--line-truncate-length)))
+               old-line package-upgrade-guard--line-truncate-length)))
             (setq shown-lines (1+ shown-lines)))
            ;; Line added
            ((and (not old-line) new-line)
@@ -360,7 +360,7 @@
               "  +%d: %s\n"
               (1+ i)
               (truncate-string-to-width
-               new-line package-diff-guard--line-truncate-length)))
+               new-line package-upgrade-guard--line-truncate-length)))
             (setq shown-lines (1+ shown-lines))))
 
           (setq i (1+ i))))
@@ -368,9 +368,9 @@
       (when (>= shown-lines max-lines)
         (insert
          (format "  ... [truncated, showing first %d changes] ...\n"
-                 package-diff-guard--max-diff-lines))))))
+                 package-upgrade-guard--max-diff-lines))))))
 
-(defun package-diff-guard--generate-diff (old-dir new-dir)
+(defun package-upgrade-guard--generate-diff (old-dir new-dir)
   "Generate diff between OLD-DIR and NEW-DIR."
   (insert
    (format "Comparing directories:\n  Old: %s\n  New: %s\n\n"
@@ -411,9 +411,9 @@
           (if (file-directory-p old-file)
               (insert "Directory (skipped)\n")
             (let ((old-content
-                   (package-diff-guard--safe-read-file old-file))
+                   (package-upgrade-guard--safe-read-file old-file))
                   (new-content
-                   (package-diff-guard--safe-read-file new-file)))
+                   (package-upgrade-guard--safe-read-file new-file)))
               (if (string= old-content new-content)
                   (insert "No changes\n")
                 (insert "File modified - showing unified diff:\n")
@@ -433,45 +433,45 @@
                     (format "  Diff generation failed: %s\n"
                             (error-message-string err)))
                    (insert "  Showing simple comparison:\n")
-                   (package-diff-guard--show-simple-diff
+                   (package-upgrade-guard--show-simple-diff
                     old-content new-content)))))))
          ((file-exists-p new-file)
           ;; New file
           (insert "New file added:\n")
           (let ((content
-                 (package-diff-guard--safe-read-file
+                 (package-upgrade-guard--safe-read-file
                   new-file
-                  package-diff-guard--file-preview-size)))
+                  package-upgrade-guard--file-preview-size)))
             (insert content)
             (when (and (not (string-prefix-p "[Error" content))
                        (> (nth 7 (file-attributes new-file))
-                          package-diff-guard--file-preview-size))
+                          package-upgrade-guard--file-preview-size))
               (insert "\n... [truncated] ..."))))
          ((file-exists-p old-file)
           ;; Deleted file
           (insert "File deleted\n")))))))
 
-(defun package-diff-guard--show-tarball-diff (pkg-desc)
+(defun package-upgrade-guard--show-tarball-diff (pkg-desc)
   "Show diff for tarball package PKG-DESC."
   (let* ((pkg-name (package-desc-name pkg-desc))
          (old-dir
-          (package-diff-guard--find-installed-package-dir
+          (package-upgrade-guard--find-installed-package-dir
            pkg-name))
          (temp-dir
-          (package-diff-guard--download-package-safely pkg-desc)))
+          (package-upgrade-guard--download-package-safely pkg-desc)))
 
     (if (not old-dir)
         ;; New package - show contents
         (progn
           (message "New package %s - showing contents..." pkg-name)
-          (package-diff-guard--show-package-contents temp-dir)
-          (package-diff-guard--ask-user-approval
+          (package-upgrade-guard--show-package-contents temp-dir)
+          (package-upgrade-guard--ask-user-approval
            pkg-desc "install new package"))
       ;; Existing package - show diff
       (let ((diff-buffer
              (get-buffer-create "*Package Security Diff*"))
             (old-version
-             (package-diff-guard--get-version-from-dir old-dir))
+             (package-upgrade-guard--get-version-from-dir old-dir))
             (new-version
              (package-version-join (package-desc-version pkg-desc))))
         (with-current-buffer diff-buffer
@@ -482,16 +482,16 @@
           (insert (format "New version: %s\n\n" new-version))
 
           ;; Generate diff
-          (package-diff-guard--generate-diff old-dir temp-dir)
+          (package-upgrade-guard--generate-diff old-dir temp-dir)
 
           (diff-mode)
           (goto-char (point-min)))
 
         (display-buffer diff-buffer)
-        (package-diff-guard--ask-user-approval
+        (package-upgrade-guard--ask-user-approval
          pkg-desc "upgrade package")))))
 
-(defun package-diff-guard--show-vc-diff (pkg-desc)
+(defun package-upgrade-guard--show-vc-diff (pkg-desc)
   "Show git diff for VC package PKG-DESC.
 Returns t if user approves, nil if rejected."
   (let* ((pkg-dir (package-desc-dir pkg-desc))
@@ -564,10 +564,10 @@ Returns t if user approves, nil if rejected."
         (goto-char (point-min)))
 
       (display-buffer diff-buffer)
-      (package-diff-guard--ask-user-approval
+      (package-upgrade-guard--ask-user-approval
        pkg-desc "upgrade VC package"))))
 
-(defun package-diff-guard--show-package-contents (pkg-dir)
+(defun package-upgrade-guard--show-package-contents (pkg-dir)
   "Show contents of package directory PKG-DIR."
   (let ((contents-buffer (get-buffer-create "*Package Contents*")))
     (with-current-buffer contents-buffer
@@ -594,18 +594,18 @@ Returns t if user approves, nil if rejected."
           (let ((main-file
                  (expand-file-name (car main-el-files) pkg-dir)))
             (let ((content
-                   (package-diff-guard--safe-read-file
+                   (package-upgrade-guard--safe-read-file
                     main-file
-                    package-diff-guard--file-preview-size)))
+                    package-upgrade-guard--file-preview-size)))
               (insert content)
               (when (and (not (string-prefix-p "[Error" content))
                          (> (nth 7 (file-attributes main-file))
-                            package-diff-guard--file-preview-size))
+                            package-upgrade-guard--file-preview-size))
                 (insert "\n... [truncated] ...")))))))
 
     (display-buffer contents-buffer)))
 
-(defun package-diff-guard--ask-user-approval (pkg-desc action)
+(defun package-upgrade-guard--ask-user-approval (pkg-desc action)
   "Ask user for approval to ACTION on PKG-DESC.
 Automatically cleans up diff buffers after approval/rejection."
   (let ((pkg-name (package-desc-name pkg-desc))
@@ -623,56 +623,56 @@ Automatically cleans up diff buffers after approval/rejection."
             (setq result (yes-or-no-p prompt))))
 
       ;; Cleanup diff buffers after decision
-      (package-diff-guard--cleanup-diff-buffers))
+      (package-upgrade-guard--cleanup-diff-buffers))
     result))
 
-(defun package-diff-guard--cleanup-diff-buffers ()
+(defun package-upgrade-guard--cleanup-diff-buffers ()
   "Clean up all package security check related buffers."
-  (dolist (buffer-name package-diff-guard--buffer-names)
+  (dolist (buffer-name package-upgrade-guard--buffer-names)
     (when-let ((buffer (get-buffer buffer-name)))
       (kill-buffer buffer))))
 
 ;;;###autoload
-(define-minor-mode package-diff-guard-mode
+(define-minor-mode package-upgrade-guard-mode
   "Enable security checking for third-party package upgrades."
   :global t
   :init-value
   nil
-  (if package-diff-guard-mode
-      (package-diff-guard--enable)
-    (package-diff-guard--disable)))
+  (if package-upgrade-guard-mode
+      (package-upgrade-guard--enable)
+    (package-upgrade-guard--disable)))
 
-(defun package-diff-guard--enable ()
+(defun package-upgrade-guard--enable ()
   "Enable security check advices."
   (advice-add
    'package-upgrade
-   :around #'package-diff-guard--advice-package-upgrade)
+   :around #'package-upgrade-guard--advice-package-upgrade)
   (advice-add
    'package-upgrade-all
-   :around #'package-diff-guard--advice-package-upgrade-all)
+   :around #'package-upgrade-guard--advice-package-upgrade-all)
   (advice-add
    'package-menu-execute
-   :around #'package-diff-guard--advice-package-menu-execute)
+   :around #'package-upgrade-guard--advice-package-menu-execute)
   (message
    "Package diff guard enabled"))
 
-(defun package-diff-guard--disable ()
+(defun package-upgrade-guard--disable ()
   "Disable security check advices."
   (advice-remove
-   'package-upgrade #'package-diff-guard--advice-package-upgrade)
+   'package-upgrade #'package-upgrade-guard--advice-package-upgrade)
   (advice-remove
    'package-upgrade-all
-   #'package-diff-guard--advice-package-upgrade-all)
+   #'package-upgrade-guard--advice-package-upgrade-all)
   (advice-remove
    'package-menu-execute
-   #'package-diff-guard--advice-package-menu-execute)
-  (package-diff-guard--cleanup-temp-dir)
-  (package-diff-guard--cleanup-diff-buffers)
+   #'package-upgrade-guard--advice-package-menu-execute)
+  (package-upgrade-guard--cleanup-temp-dir)
+  (package-upgrade-guard--cleanup-diff-buffers)
   (message "Package diff guard disabled"))
 
-(defun package-diff-guard--advice-package-upgrade (orig-fun name)
+(defun package-upgrade-guard--advice-package-upgrade (orig-fun name)
   "Advice for `package-upgrade' with diff checking."
-  (if (not package-diff-guard-enabled)
+  (if (not package-upgrade-guard-enabled)
       (funcall orig-fun name)
     (let* ((package
             (if (symbolp name)
@@ -687,14 +687,14 @@ Automatically cleans up diff buffers after approval/rejection."
               (if (and pkg-desc (package-vc-p pkg-desc))
                   ;; VC package - show git diff
                   (setq approved
-                        (package-diff-guard--show-vc-diff
+                        (package-upgrade-guard--show-vc-diff
                          pkg-desc))
                 ;; Regular package
                 (let ((available
                        (assq package package-archive-contents)))
                   (when available
                     (setq approved
-                          (package-diff-guard--show-tarball-diff
+                          (package-upgrade-guard--show-tarball-diff
                            (cadr available)))))))
 
             (if approved
@@ -718,10 +718,10 @@ Automatically cleans up diff buffers after approval/rejection."
                package))
            (funcall orig-fun name)))))))
 
-(defun package-diff-guard--advice-package-upgrade-all
+(defun package-upgrade-guard--advice-package-upgrade-all
     (orig-fun &optional query)
   "Advice for `package-upgrade-all' with diff checking."
-  (if (not package-diff-guard-enabled)
+  (if (not package-upgrade-guard-enabled)
       (funcall orig-fun query)
     (package-refresh-contents)
     (let ((upgradeable (package--upgradeable-packages))
@@ -744,7 +744,7 @@ Automatically cleans up diff buffers after approval/rejection."
                    (length upgradeable)
                    package-name)
           (condition-case err
-              (when (package-diff-guard--upgrade-single-package
+              (when (package-upgrade-guard--upgrade-single-package
                      package-name)
                 (setq upgraded (1+ upgraded)))
             (error
@@ -756,10 +756,10 @@ Automatically cleans up diff buffers after approval/rejection."
          "Diff-checked upgrade completed: %d/%d packages upgraded"
          upgraded (length upgradeable))))))
 
-(defun package-diff-guard--advice-package-menu-execute
+(defun package-upgrade-guard--advice-package-menu-execute
     (orig-fun &optional noquery)
   "Advice for `package-menu-execute' with diff checking."
-  (if (not package-diff-guard-enabled)
+  (if (not package-upgrade-guard-enabled)
       (funcall orig-fun noquery)
     ;; Extract packages marked for installation/upgrade
     (let (install-list upgrade-list)
@@ -788,7 +788,7 @@ Automatically cleans up diff buffers after approval/rejection."
           (dolist (pkg-desc install-list)
             (let ((pkg-name (package-desc-name pkg-desc)))
               (message "Diff checking installation: %s" pkg-name)
-              (when (package-diff-guard--show-tarball-diff pkg-desc)
+              (when (package-upgrade-guard--show-tarball-diff pkg-desc)
                 (push pkg-desc approved-installs))))
           
           ;; Check upgrades
@@ -796,22 +796,22 @@ Automatically cleans up diff buffers after approval/rejection."
             (let ((pkg-name (package-desc-name pkg-desc)))
               (message "Diff checking upgrade: %s" pkg-name)
               (if (package-vc-p pkg-desc)
-                  (when (package-diff-guard--show-vc-diff pkg-desc)
+                  (when (package-upgrade-guard--show-vc-diff pkg-desc)
                     (push pkg-desc approved-upgrades))
-                (when (package-diff-guard--show-tarball-diff pkg-desc)
+                (when (package-upgrade-guard--show-tarball-diff pkg-desc)
                   (push pkg-desc approved-upgrades)))))
           
           ;; Remove unapproved packages from the marked list
           (when (or (< (length approved-installs) (length install-list))
                     (< (length approved-upgrades) (length upgrade-list)))
-            (package-diff-guard--unmark-unapproved-packages
+            (package-upgrade-guard--unmark-unapproved-packages
              install-list approved-installs
              upgrade-list approved-upgrades))
           
           ;; Proceed with execution (only approved packages will be processed)
           (funcall orig-fun noquery))))))
 
-(defun package-diff-guard--unmark-unapproved-packages
+(defun package-upgrade-guard--unmark-unapproved-packages
     (all-installs approved-installs all-upgrades approved-upgrades)
   "Unmark packages that were not approved during security check."
   (let ((unapproved-installs
@@ -838,27 +838,27 @@ Automatically cleans up diff buffers after approval/rejection."
                (+ (length unapproved-installs)
                   (length unapproved-upgrades))))))
 
-(defun package-diff-guard--upgrade-single-package (package-name)
+(defun package-upgrade-guard--upgrade-single-package (package-name)
   "Upgrade single package PACKAGE-NAME with diff check."
   (let* ((pkg-desc (cadr (assq package-name package-alist)))
          (approved nil))
 
     (if (and pkg-desc (package-vc-p pkg-desc))
         ;; VC package - show git diff
-        (setq approved (package-diff-guard--show-vc-diff pkg-desc))
+        (setq approved (package-upgrade-guard--show-vc-diff pkg-desc))
       ;; Regular package
       (let ((available (assq package-name package-archive-contents)))
         (when available
           (setq approved
-                (package-diff-guard--show-tarball-diff
+                (package-upgrade-guard--show-tarball-diff
                  (cadr available))))))
 
     (when approved
       ;; Call package-upgrade directly without advice to avoid double prompting
-      (let ((package-diff-guard-enabled nil))
+      (let ((package-upgrade-guard-enabled nil))
         (package-upgrade package-name))
       t)))
 
-(provide 'package-diff-guard)
+(provide 'package-upgrade-guard)
 
-;;; package-diff-guard.el ends here
+;;; package-upgrade-guard.el ends here

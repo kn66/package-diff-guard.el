@@ -1,6 +1,6 @@
 * Overview
 
-Package Diff Guard is an Emacs security tool that shows diffs for all package upgrades and installations, helping users review changes before proceeding. It supports both ELPA/MELPA packages and VC (version control) packages.
+Package Upgrade Guard is an Emacs security tool that shows diffs for all package upgrades and installations, helping users review changes before proceeding. It supports both ELPA/MELPA packages and VC (version control) packages.
 
 * Features
 
@@ -17,14 +17,14 @@ Package Diff Guard is an Emacs security tool that shows diffs for all package up
 
 * Installation
 
-1. Place ~package-diff-guard.el~ in your Emacs load path
+1. Place ~package-upgrade-guard.el~ in your Emacs load path
 2. Add to your Emacs configuration:
 
 #+BEGIN_SRC emacs-lisp
-  (use-package package-diff-guard
-    :vc ( :url "https://github.com/kn66/package-diff-guard.el.git" :rev :newest)
+  (use-package package-upgrade-guard
+    :vc ( :url "https://github.com/kn66/package-upgrade-guard.el.git" :rev :newest)
     :config
-    (package-diff-guard-mode +1))
+    (package-upgrade-guard-mode +1))
 #+END_SRC
 
 * Usage
@@ -64,18 +64,18 @@ For ELPA/MELPA packages, the tool shows:
 
 #+BEGIN_SRC emacs-lisp
 ;; Enable/disable the security checker
-(setq package-diff-guard-enabled t)
+(setq package-upgrade-guard-enabled t)
 
 ;; Custom temporary directory for package extraction
-(setq package-diff-guard-temp-dir "/path/to/temp/dir")
+(setq package-upgrade-guard-temp-dir "/path/to/temp/dir")
 #+END_SRC
 
 ** Advanced Configuration
 
-The package provides several customization options through the ~package-diff-guard~ group:
+The package provides several customization options through the ~package-upgrade-guard~ group:
 
-- ~package-diff-guard-enabled~ - Global enable/disable
-- ~package-diff-guard-temp-dir~ - Custom temporary directory
+- ~package-upgrade-guard-enabled~ - Global enable/disable
+- ~package-upgrade-guard-temp-dir~ - Custom temporary directory
 
 * Requirements
 
@@ -106,7 +106,7 @@ Package Diff Guard is designed for defensive security purposes:
 If you encounter permission errors, set a custom temporary directory:
 
 #+BEGIN_SRC emacs-lisp
-(setq package-diff-guard-temp-dir "~/tmp/package-diff-guard")
+(setq package-upgrade-guard-temp-dir "~/tmp/package-upgrade-guard")
 #+END_SRC
 
 *** Git Errors for VC Packages

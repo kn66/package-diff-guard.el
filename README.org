@@ -1,0 +1,131 @@
+* Overview
+
+Package Diff Guard is an Emacs security tool that shows diffs for all package upgrades and installations, helping users review changes before proceeding. It supports both ELPA/MELPA packages and VC (version control) packages.
+
+* Features
+
+- 🔍 Shows diffs for package upgrades before installation
+- 📦 Supports both tarball packages (ELPA/MELPA) and VC packages (git repositories)
+- 🛡️ Security-focused review process with user approval prompts
+- 🔄 Works with ~package-upgrade~, ~package-upgrade-all~, and package menu operations
+- 📊 Displays file-by-file changes, new files, and deleted files
+- ⚡ Efficient TAR extraction for package analysis
+
+* Installation
+
+1. Place ~package-diff-guard.el~ in your Emacs load path
+2. Add to your Emacs configuration:
+
+#+BEGIN_SRC emacs-lisp
+  (use-package package-diff-guard
+    :vc ( :url "https://github.com/kn66/package-diff-guard.el.git" :rev :newest)
+    :config
+    (package-diff-guard-mode +1))
+#+END_SRC
+
+* Usage
+
+Once enabled, Package Diff Guard automatically intercepts:
+
+- ~M-x package-upgrade~ - Shows diff before upgrading individual packages
+- ~M-x package-upgrade-all~ - Reviews each package individually
+- Package menu operations (mark packages with ~U~ or ~I~, then ~x~)
+
+** Interactive Workflow
+
+1. When you attempt to upgrade a package, a diff buffer appears
+2. Review the changes in the displayed diff
+3. Respond to the approval prompt:
+   - ~yes~ - Proceed with installation/upgrade
+   - ~no~ - Cancel the operation
+
+** VC Packages
+
+For git-based VC packages, the tool shows:
+- Git status
+- New commits to be pulled
+- Detailed diff of changes
+
+** Regular Packages
+
+For ELPA/MELPA packages, the tool shows:
+- File-by-file unified diffs
+- New files added
+- Files removed
+- Version information
+
+* Configuration
+
+** Customization Variables
+
+#+BEGIN_SRC emacs-lisp
+;; Enable/disable the security checker
+(setq package-diff-guard-enabled t)
+
+;; Custom temporary directory for package extraction
+(setq package-diff-guard-temp-dir "/path/to/temp/dir")
+#+END_SRC
+
+** Advanced Configuration
+
+The package provides several customization options through the ~package-diff-guard~ group:
+
+- ~package-diff-guard-enabled~ - Global enable/disable
+- ~package-diff-guard-temp-dir~ - Custom temporary directory
+
+* Requirements
+
+- Emacs 27.1 or later
+- Standard packages: ~package~, ~diff~, ~vc-git~
+
+* Security Considerations
+
+Package Diff Guard is designed for defensive security purposes:
+
+- Helps identify potentially malicious changes in package updates
+- Provides transparency into what code changes are being installed
+- Allows users to make informed decisions about package upgrades
+- Creates audit trails for package modifications
+
+* Limitations
+
+- Large packages may show truncated diffs for performance
+- Binary files are not diffed (shown as modified)
+- Requires manual review for each package upgrade
+- Temporary files are created during analysis
+
+* Troubleshooting
+
+** Common Issues
+
+*** Temporary Directory Errors
+If you encounter permission errors, set a custom temporary directory:
+
+#+BEGIN_SRC emacs-lisp
+(setq package-diff-guard-temp-dir "~/tmp/package-diff-guard")
+#+END_SRC
+
+*** Git Errors for VC Packages
+Ensure git is in your PATH and the package directory is a valid git repository.
+
+*** Performance with Large Packages
+The tool truncates large diffs automatically. For extremely large packages, consider reviewing changes externally.
+
+* Contributing
+
+This is a security-focused tool. Contributions should prioritize:
+
+1. Security and safety of the diff analysis
+2. Clear presentation of changes to users
+3. Robust error handling
+4. Performance with large packages
+
+* License
+
+Copyright (C) 2025 Free Software Foundation, Inc.
+
+This program is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
+
+* Version History
+
+- v1.0.0 - Initial release with tarball and VC package support

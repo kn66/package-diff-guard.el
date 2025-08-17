@@ -59,15 +59,16 @@ For ELPA/MELPA packages, the tool shows:
 - Files removed
 - Version information
 
-* Archive Exclusion
+* Exclusion Configuration
 
-Package Upgrade Guard allows you to exclude trusted package archives from diff checking. Packages from excluded archives are automatically approved and upgraded without showing diffs.
+Package Upgrade Guard allows you to exclude trusted packages from diff checking in two ways: by archive or by specific package name. Excluded packages are automatically approved and upgraded without showing diffs.
 
 ** Use Cases
 
 - *Development Archives*: Skip diff checking for development versions of GNU ELPA packages (~gnu-elpa-devel~)
 - *Trusted Sources*: Auto-approve packages from official archives you trust
-- *Bulk Updates*: Reduce manual review for packages from specific sources
+- *Trusted Packages*: Auto-approve specific packages you trust (e.g., ~magit~, ~org-mode~)
+- *Bulk Updates*: Reduce manual review for packages from specific sources or individual packages
 
 ** Configuration Example
 
@@ -80,16 +81,29 @@ Package Upgrade Guard allows you to exclude trusted package archives from diff c
 
   ;; Or exclude multiple archives
   (setopt package-upgrade-guard-excluded-archives '("gnu" "nongnu"))
+
+  ;; Exclude specific trusted packages
+  (setopt package-upgrade-guard-excluded-packages '(magit org-mode helm))
+
+  ;; Combine both approaches
+  (setopt package-upgrade-guard-excluded-archives '("gnu"))
+  (setopt package-upgrade-guard-excluded-packages '(some-trusted-melpa-package))
 #+END_SRC
 
 ** Behavior
 
-When a package from an excluded archive is encountered:
+When an excluded package is encountered (either by archive or package name):
 
 1. ✅ Diff checking is automatically skipped
 2. ✅ Package is auto-approved for installation/upgrade
-3. ✅ Clear message indicates the automatic approval
+3. ✅ Clear message indicates the automatic approval and reason
 4. ✅ Manual review is still performed for non-excluded packages
+
+** Example Messages
+
+- ~Auto-approving installation: excluded package 'magit'~
+- ~Auto-approving upgrade: excluded archive 'gnu'~
+- ~Skipping security check: excluded package 'helm'~
 
 ** Archive Name Reference
 
@@ -115,6 +129,9 @@ Note: ~"melpa"~ and other third-party archives should generally not be excluded 
 
 ;; Exclude trusted archives from diff checking (auto-approve)
 (setopt package-upgrade-guard-excluded-archives '("gnu"))
+
+;; Exclude specific packages from diff checking (auto-approve)
+(setopt package-upgrade-guard-excluded-packages '(magit org-mode helm))
 #+END_SRC
 
 ** Advanced Configuration
@@ -124,6 +141,7 @@ The package provides several customization options through the ~package-upgrade-
 - ~package-upgrade-guard-enabled~ - Global enable/disable
 - ~package-upgrade-guard-temp-dir~ - Custom temporary directory
 - ~package-upgrade-guard-excluded-archives~ - List of archive names to auto-approve
+- ~package-upgrade-guard-excluded-packages~ - List of package names to auto-approve
 
 * Requirements
 
@@ -180,5 +198,6 @@ This program is free software; you can redistribute it and/or modify it under th
 
 * Version History
 
+- v1.2.0 - Added package-name exclusion and package-vc-upgrade support
 - v1.1.0 - Added archive exclusion functionality for trusted sources
 - v1.0.0 - Initial release with tarball and VC package support

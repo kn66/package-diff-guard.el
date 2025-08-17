@@ -71,6 +71,13 @@ For example: '(\"gnu\" \"nongnu\") to exclude GNU ELPA and NonGNU ELPA."
   :type '(repeat string)
   :group 'package-upgrade-guard)
 
+(defcustom package-upgrade-guard-excluded-packages nil
+  "List of package names to exclude from security checks.
+Each element should be a symbol or string matching a package name.
+For example: '(magit org-mode helm) to exclude specific packages."
+  :type '(repeat (choice symbol string))
+  :group 'package-upgrade-guard)
+
 (defvar package-upgrade-guard--temp-dir nil
   "Actual temporary directory used for security checks.")
 
@@ -105,18 +112,74 @@ For example: '(\"gnu\" \"nongnu\") to exclude GNU ELPA and NonGNU ELPA."
 
 (defun package-upgrade-guard--package-excluded-p (pkg-desc)
   "Check if package PKG-DESC should be excluded from security checks.
-Returns t if the package's archive is in the excluded list."
-  (when (and package-upgrade-guard-excluded-archives pkg-desc)
-    (let ((archive (package-desc-archive pkg-desc)))
-      ;; If archive is nil, try to find it from package-archive-contents
-      (when (null archive)
-        (let* ((pkg-name (package-desc-name pkg-desc))
-               (available (assq pkg-name package-archive-contents)))
-          (when available
-            (setq archive (package-desc-archive (cadr available))))))
-      (and archive
-           (member
-            archive package-upgrade-guard-excluded-archives)))))
+Returns t if the package's archive or name is in the excluded lists."
+  (when pkg-desc
+    (let ((pkg-name (package-desc-name pkg-desc))
+          (archive (package-desc-archive pkg-desc))
+          (excluded-by-name nil)
+          (excluded-by-archive nil))
+
+      ;; Check if package name is excluded
+      (when package-upgrade-guard-excluded-packages
+        (setq excluded-by-name
+              (or (member
+                   pkg-name package-upgrade-guard-excluded-packages)
+                  (member
+                   (symbol-name pkg-name)
+                   package-upgrade-guard-excluded-packages))))
+
+      ;; Check if archive is excluded
+      (when package-upgrade-guard-excluded-archives
+        ;; If archive is nil, try to find it from package-archive-contents
+        ;; But for VC packages, archive info might not be available
+        (when (null archive)
+          (let ((available (assq pkg-name package-archive-contents)))
+            (when available
+              (setq archive
+                    (package-desc-archive (cadr available))))))
+        (setq excluded-by-archive
+              (and archive
+                   (member
+                    archive
+                    package-upgrade-guard-excluded-archives))))
+
+      ;; Return t if excluded by either name or archive
+      (or excluded-by-name excluded-by-archive))))
+
+(defun package-upgrade-guard--get-exclusion-reason (pkg-desc)
+  "Get human-readable reason for package exclusion."
+  (when pkg-desc
+    (let ((pkg-name (package-desc-name pkg-desc))
+          (archive (package-desc-archive pkg-desc)))
+
+      ;; Check package name exclusion first
+      (cond
+       ((and package-upgrade-guard-excluded-packages
+             (or (member
+                  pkg-name package-upgrade-guard-excluded-packages)
+                 (member
+                  (symbol-name pkg-name)
+                  package-upgrade-guard-excluded-packages)))
+        (format "excluded package '%s'" pkg-name))
+
+       ;; Check archive exclusion
+       ((and
+         package-upgrade-guard-excluded-archives
+         (progn
+           ;; If archive is nil, try to find it from package-archive-contents
+           (when (null archive)
+             (let ((available
+                    (assq pkg-name package-archive-contents)))
+               (when available
+                 (setq archive
+                       (package-desc-archive (cadr available))))))
+           (and archive
+                (member
+                 archive package-upgrade-guard-excluded-archives))))
+        (format "excluded archive '%s'" archive))
+
+       (t
+        "unknown reason")))))
 
 
 (defun package-upgrade-guard--safe-read-file
@@ -675,6 +738,9 @@ Automatically cleans up diff buffers after approval/rejection."
   (advice-add
    'package-menu-execute
    :around #'package-upgrade-guard--advice-package-menu-execute)
+  (advice-add
+   'package-vc-upgrade
+   :around #'package-upgrade-guard--advice-package-vc-upgrade)
   (message "Package diff guard enabled"))
 
 (defun package-upgrade-guard--disable ()
@@ -687,6 +753,9 @@ Automatically cleans up diff buffers after approval/rejection."
   (advice-remove
    'package-menu-execute
    #'package-upgrade-guard--advice-package-menu-execute)
+  (advice-remove
+   'package-vc-upgrade
+   #'package-upgrade-guard--advice-package-vc-upgrade)
   (package-upgrade-guard--cleanup-temp-dir)
   (package-upgrade-guard--cleanup-diff-buffers)
   (message "Package diff guard disabled"))
@@ -715,15 +784,25 @@ Automatically cleans up diff buffers after approval/rejection."
                     ;; Package is excluded - skip security check
                     (progn
                       (message
-                       "Skipping security check for excluded archive: %s"
-                       (package-desc-archive new-pkg-desc))
+                       "Skipping security check: %s"
+                       (package-upgrade-guard--get-exclusion-reason
+                        new-pkg-desc))
                       (setq approved t))
                   ;; Regular security check
                   (if (and pkg-desc (package-vc-p pkg-desc))
-                      ;; VC package - show git diff
-                      (setq approved
-                            (package-upgrade-guard--show-vc-diff
-                             pkg-desc))
+                      ;; VC package - check exclusion first
+                      (if (package-upgrade-guard--package-excluded-p
+                           pkg-desc)
+                          (progn
+                            (message
+                             "Skipping security check: %s"
+                             (package-upgrade-guard--get-exclusion-reason
+                              pkg-desc))
+                            (setq approved t))
+                        ;; VC package - show git diff
+                        (setq approved
+                              (package-upgrade-guard--show-vc-diff
+                               pkg-desc)))
                     ;; Regular package
                     (when available
                       (setq approved
@@ -830,8 +909,9 @@ Automatically cleans up diff buffers after approval/rejection."
                   ;; Package is excluded - auto-approve
                   (progn
                     (message
-                     "Auto-approving installation from excluded archive: %s"
-                     (package-desc-archive pkg-desc))
+                     "Auto-approving installation: %s"
+                     (package-upgrade-guard--get-exclusion-reason
+                      pkg-desc))
                     (push pkg-desc approved-installs))
                 ;; Regular security check
                 (when (package-upgrade-guard--show-tarball-diff
@@ -846,8 +926,9 @@ Automatically cleans up diff buffers after approval/rejection."
                   ;; Package is excluded - auto-approve
                   (progn
                     (message
-                     "Auto-approving upgrade from excluded archive: %s"
-                     (package-desc-archive pkg-desc))
+                     "Auto-approving upgrade: %s"
+                     (package-upgrade-guard--get-exclusion-reason
+                      pkg-desc))
                     (push pkg-desc approved-upgrades))
                 ;; Regular security check
                 (if (package-vc-p pkg-desc)
@@ -870,18 +951,27 @@ Automatically cleans up diff buffers after approval/rejection."
              approved-upgrades))
 
           ;; Show summary of approved packages before execution
-          (let ((total-approved (+ (length approved-installs) (length approved-upgrades))))
+          (let ((total-approved
+                 (+ (length approved-installs)
+                    (length approved-upgrades))))
             (when (> total-approved 0)
-              (message "Proceeding with %d approved package(s):" total-approved)
+              (message "Proceeding with %d approved package(s):"
+                       total-approved)
               (when approved-installs
-                (message "  Installing: %s" 
-                         (mapconcat (lambda (pkg) (symbol-name (package-desc-name pkg)))
-                                   approved-installs ", ")))
+                (message "  Installing: %s"
+                         (mapconcat (lambda (pkg)
+                                      (symbol-name
+                                       (package-desc-name pkg)))
+                                    approved-installs
+                                    ", ")))
               (when approved-upgrades
                 (message "  Upgrading: %s"
-                         (mapconcat (lambda (pkg) (symbol-name (package-desc-name pkg)))
-                                   approved-upgrades ", ")))))
-          
+                         (mapconcat (lambda (pkg)
+                                      (symbol-name
+                                       (package-desc-name pkg)))
+                                    approved-upgrades
+                                    ", ")))))
+
           ;; Proceed with execution (only approved packages will be processed)
           (funcall orig-fun noquery))))))
 
@@ -908,12 +998,19 @@ Automatically cleans up diff buffers after approval/rejection."
         (forward-line)))
 
     (when (or unapproved-installs unapproved-upgrades)
-      (let ((unapproved-names 
-             (append 
-              (mapcar (lambda (pkg) (symbol-name (package-desc-name pkg))) unapproved-installs)
-              (mapcar (lambda (pkg) (symbol-name (package-desc-name pkg))) unapproved-upgrades))))
+      (let ((unapproved-names
+             (append
+              (mapcar
+               (lambda (pkg)
+                 (symbol-name (package-desc-name pkg)))
+               unapproved-installs)
+              (mapcar
+               (lambda (pkg)
+                 (symbol-name (package-desc-name pkg)))
+               unapproved-upgrades))))
         (message "Skipped %d rejected package(s): %s"
-                 (+ (length unapproved-installs) (length unapproved-upgrades))
+                 (+ (length unapproved-installs)
+                    (length unapproved-upgrades))
                  (mapconcat 'identity unapproved-names ", "))))))
 
 (defun package-upgrade-guard--upgrade-single-package (package-name)
@@ -929,26 +1026,99 @@ Automatically cleans up diff buffers after approval/rejection."
       (if (package-upgrade-guard--package-excluded-p new-pkg-desc)
           ;; Package is excluded - skip security check
           (progn
-            (message
-             "Skipping security check for excluded archive: %s"
-             (package-desc-archive new-pkg-desc))
+            (message "Skipping security check: %s"
+                     (package-upgrade-guard--get-exclusion-reason
+                      new-pkg-desc))
             (setq approved t))
         ;; Regular security check
         (if (and pkg-desc (package-vc-p pkg-desc))
-            ;; VC package - show git diff
-            (setq approved
-                  (package-upgrade-guard--show-vc-diff pkg-desc))
-          ;; Regular package
-          (when available
-            (setq approved
-                  (package-upgrade-guard--show-tarball-diff
-                   new-pkg-desc))))))
+            ;; VC package - check exclusion first
+            (if (package-upgrade-guard--package-excluded-p pkg-desc)
+                (progn
+                  (message
+                   "Skipping security check: %s"
+                   (package-upgrade-guard--get-exclusion-reason
+                    pkg-desc))
+                  (setq approved t))
+              ;; VC package - show git diff
+              (setq approved
+                    (package-upgrade-guard--show-vc-diff pkg-desc))))
+        ;; Regular package
+        (when available
+          (setq approved
+                (package-upgrade-guard--show-tarball-diff
+                 new-pkg-desc))))))
 
-    (when approved
-      ;; Call package-upgrade directly without advice to avoid double prompting
-      (let ((package-upgrade-guard-enabled nil))
-        (package-upgrade package-name))
-      t)))
+  (when approved
+    ;; Call package-upgrade directly without advice to avoid double prompting
+    (let ((package-upgrade-guard-enabled nil))
+      (package-upgrade package-name))
+    t))
+
+(defun package-upgrade-guard--advice-package-vc-upgrade
+    (orig-fun &optional pkg-name)
+  "Advice for `package-vc-upgrade' with diff checking."
+  (if (not package-upgrade-guard-enabled)
+      (funcall orig-fun pkg-name)
+    (let*
+        ((pkg-desc
+          (cond
+           ;; If pkg-name is already a package-desc, use it directly
+           ((and pkg-name (package-desc-p pkg-name))
+            pkg-name)
+           ;; If pkg-name is a symbol or string, find the package-desc
+           (pkg-name
+            (let ((package-name
+                   (if (symbolp pkg-name)
+                       pkg-name
+                     (intern pkg-name))))
+              (cadr (assq package-name package-alist))))
+           ;; If no pkg-name provided, call original function (it will prompt)
+           (t
+            (funcall orig-fun))))
+         (approved nil))
+
+      ;; Only proceed if we have a package-desc or if original function was called
+      (if (package-desc-p pkg-desc)
+          (let ((package-name (package-desc-name pkg-desc)))
+            (condition-case err
+                (if (package-upgrade-guard--package-excluded-p
+                     pkg-desc)
+                    ;; Package is excluded - skip security check
+                    (progn
+                      (message
+                       "Skipping security check: %s"
+                       (package-upgrade-guard--get-exclusion-reason
+                        pkg-desc))
+                      (setq approved t))
+                  ;; Regular security check for VC packages
+                  (setq approved
+                        (package-upgrade-guard--show-vc-diff
+                         pkg-desc)))
+              (error
+               (message "Diff check failed for VC package %s: %s"
+                        package-name
+                        (error-message-string err))
+               (when
+                   (y-or-n-p
+                    (format
+                     "Continue with upgrade of %s despite diff check failure? "
+                     package-name))
+                 (setq approved t))))
+
+            (if approved
+                (progn
+                  (message
+                   "Diff check passed for VC package %s. Proceeding with upgrade..."
+                   package-name)
+                  ;; Call the original function with package-upgrade-guard disabled
+                  (let ((package-upgrade-guard-enabled nil))
+                    (funcall orig-fun pkg-desc)))
+              (message
+               "Diff check rejected for VC package %s. Upgrade cancelled."
+               package-name)))
+        ;; If we couldn't get a package-desc, we already called the original function above
+        nil))))
 
 (provide 'package-upgrade-guard)
 

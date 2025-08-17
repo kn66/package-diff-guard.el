@@ -83,7 +83,7 @@ Package Upgrade Guard allows you to exclude trusted packages from diff checking 
   (setopt package-upgrade-guard-excluded-archives '("gnu" "nongnu"))
 
   ;; Exclude specific trusted packages
-  (setopt package-upgrade-guard-excluded-packages '(magit org-mode helm))
+  (setopt package-upgrade-guard-excluded-packages '(magit org helm))
 
   ;; Combine both approaches
   (setopt package-upgrade-guard-excluded-archives '("gnu"))
@@ -131,7 +131,7 @@ Note: ~"melpa"~ and other third-party archives should generally not be excluded 
 (setopt package-upgrade-guard-excluded-archives '("gnu"))
 
 ;; Exclude specific packages from diff checking (auto-approve)
-(setopt package-upgrade-guard-excluded-packages '(magit org-mode helm))
+(setopt package-upgrade-guard-excluded-packages '(magit org helm))
 #+END_SRC
 
 ** Advanced Configuration

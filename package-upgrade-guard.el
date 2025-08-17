@@ -64,6 +64,13 @@
   :type '(choice (const :tag "Default" nil) (directory :tag "Directory"))
   :group 'package-upgrade-guard)
 
+(defcustom package-upgrade-guard-excluded-archives nil
+  "List of package archives to exclude from security checks.
+Each element should be a string matching an archive name from `package-archives'.
+For example: '(\"gnu\" \"nongnu\") to exclude GNU ELPA and NonGNU ELPA."
+  :type '(repeat string)
+  :group 'package-upgrade-guard)
+
 (defvar package-upgrade-guard--temp-dir nil
   "Actual temporary directory used for security checks.")
 
@@ -95,6 +102,21 @@
        (message "Warning: Failed to cleanup temp directory %s: %s"
                 package-upgrade-guard--temp-dir
                 (error-message-string err))))))
+
+(defun package-upgrade-guard--package-excluded-p (pkg-desc)
+  "Check if package PKG-DESC should be excluded from security checks.
+Returns t if the package's archive is in the excluded list."
+  (when (and package-upgrade-guard-excluded-archives pkg-desc)
+    (let ((archive (package-desc-archive pkg-desc)))
+      ;; If archive is nil, try to find it from package-archive-contents
+      (when (null archive)
+        (let* ((pkg-name (package-desc-name pkg-desc))
+               (available (assq pkg-name package-archive-contents)))
+          (when available
+            (setq archive (package-desc-archive (cadr available))))))
+      (and archive
+           (member
+            archive package-upgrade-guard-excluded-archives)))))
 
 
 (defun package-upgrade-guard--safe-read-file
@@ -653,8 +675,7 @@ Automatically cleans up diff buffers after approval/rejection."
   (advice-add
    'package-menu-execute
    :around #'package-upgrade-guard--advice-package-menu-execute)
-  (message
-   "Package diff guard enabled"))
+  (message "Package diff guard enabled"))
 
 (defun package-upgrade-guard--disable ()
   "Disable security check advices."
@@ -683,19 +704,31 @@ Automatically cleans up diff buffers after approval/rejection."
       ;; Perform diff check for all packages
       (condition-case err
           (progn
-            (let ((pkg-desc (cadr (assq package package-alist))))
-              (if (and pkg-desc (package-vc-p pkg-desc))
-                  ;; VC package - show git diff
-                  (setq approved
-                        (package-upgrade-guard--show-vc-diff
-                         pkg-desc))
-                ;; Regular package
-                (let ((available
-                       (assq package package-archive-contents)))
-                  (when available
-                    (setq approved
-                          (package-upgrade-guard--show-tarball-diff
-                           (cadr available)))))))
+            (let ((pkg-desc (cadr (assq package package-alist)))
+                  (available (assq package package-archive-contents)))
+              ;; Check the new version from archive contents for exclusion
+              (let ((new-pkg-desc
+                     (when available
+                       (cadr available))))
+                (if (package-upgrade-guard--package-excluded-p
+                     new-pkg-desc)
+                    ;; Package is excluded - skip security check
+                    (progn
+                      (message
+                       "Skipping security check for excluded archive: %s"
+                       (package-desc-archive new-pkg-desc))
+                      (setq approved t))
+                  ;; Regular security check
+                  (if (and pkg-desc (package-vc-p pkg-desc))
+                      ;; VC package - show git diff
+                      (setq approved
+                            (package-upgrade-guard--show-vc-diff
+                             pkg-desc))
+                    ;; Regular package
+                    (when available
+                      (setq approved
+                            (package-upgrade-guard--show-tarball-diff
+                             new-pkg-desc)))))))
 
             (if approved
                 (progn
@@ -726,18 +759,22 @@ Automatically cleans up diff buffers after approval/rejection."
     (package-refresh-contents)
     (let ((upgradeable (package--upgradeable-packages))
           (upgraded 0))
-      
+
       (if (not upgradeable)
           (message "No packages to upgrade")
         ;; Ask for overall confirmation first (like original package-upgrade-all)
-        (when (and query
-                   (not (yes-or-no-p
-                         (format "Diff check %d package(s) individually and upgrade? "
-                                 (length upgradeable)))))
+        (when
+            (and
+             query
+             (not
+              (yes-or-no-p
+               (format
+                "Diff check %d package(s) individually and upgrade? "
+                (length upgradeable)))))
           (user-error "Upgrade aborted"))
-        
+
         (message "Proceeding with individual diff checks...")
-        
+
         (dolist (package-name upgradeable)
           (message "Checking package %d/%d: %s"
                    (1+ upgraded)
@@ -762,7 +799,8 @@ Automatically cleans up diff buffers after approval/rejection."
   (if (not package-upgrade-guard-enabled)
       (funcall orig-fun noquery)
     ;; Extract packages marked for installation/upgrade
-    (let (install-list upgrade-list)
+    (let (install-list
+          upgrade-list)
       (save-excursion
         (goto-char (point-min))
         (while (not (eobp))
@@ -779,34 +817,70 @@ Automatically cleans up diff buffers after approval/rejection."
       ;; If no packages to check, proceed normally
       (if (not (or install-list upgrade-list))
           (funcall orig-fun noquery)
-        
+
         ;; Perform diff checks for each package
         (let ((approved-installs nil)
               (approved-upgrades nil))
-          
+
           ;; Check installations
           (dolist (pkg-desc install-list)
             (let ((pkg-name (package-desc-name pkg-desc)))
               (message "Diff checking installation: %s" pkg-name)
-              (when (package-upgrade-guard--show-tarball-diff pkg-desc)
-                (push pkg-desc approved-installs))))
-          
+              (if (package-upgrade-guard--package-excluded-p pkg-desc)
+                  ;; Package is excluded - auto-approve
+                  (progn
+                    (message
+                     "Auto-approving installation from excluded archive: %s"
+                     (package-desc-archive pkg-desc))
+                    (push pkg-desc approved-installs))
+                ;; Regular security check
+                (when (package-upgrade-guard--show-tarball-diff
+                       pkg-desc)
+                  (push pkg-desc approved-installs)))))
+
           ;; Check upgrades
           (dolist (pkg-desc upgrade-list)
             (let ((pkg-name (package-desc-name pkg-desc)))
               (message "Diff checking upgrade: %s" pkg-name)
-              (if (package-vc-p pkg-desc)
-                  (when (package-upgrade-guard--show-vc-diff pkg-desc)
+              (if (package-upgrade-guard--package-excluded-p pkg-desc)
+                  ;; Package is excluded - auto-approve
+                  (progn
+                    (message
+                     "Auto-approving upgrade from excluded archive: %s"
+                     (package-desc-archive pkg-desc))
                     (push pkg-desc approved-upgrades))
-                (when (package-upgrade-guard--show-tarball-diff pkg-desc)
-                  (push pkg-desc approved-upgrades)))))
-          
+                ;; Regular security check
+                (if (package-vc-p pkg-desc)
+                    (when (package-upgrade-guard--show-vc-diff
+                           pkg-desc)
+                      (push pkg-desc approved-upgrades))
+                  (when (package-upgrade-guard--show-tarball-diff
+                         pkg-desc)
+                    (push pkg-desc approved-upgrades))))))
+
           ;; Remove unapproved packages from the marked list
-          (when (or (< (length approved-installs) (length install-list))
-                    (< (length approved-upgrades) (length upgrade-list)))
+          (when (or (< (length approved-installs)
+                       (length install-list))
+                    (< (length approved-upgrades)
+                       (length upgrade-list)))
             (package-upgrade-guard--unmark-unapproved-packages
-             install-list approved-installs
-             upgrade-list approved-upgrades))
+             install-list
+             approved-installs
+             upgrade-list
+             approved-upgrades))
+
+          ;; Show summary of approved packages before execution
+          (let ((total-approved (+ (length approved-installs) (length approved-upgrades))))
+            (when (> total-approved 0)
+              (message "Proceeding with %d approved package(s):" total-approved)
+              (when approved-installs
+                (message "  Installing: %s" 
+                         (mapconcat (lambda (pkg) (symbol-name (package-desc-name pkg)))
+                                   approved-installs ", ")))
+              (when approved-upgrades
+                (message "  Upgrading: %s"
+                         (mapconcat (lambda (pkg) (symbol-name (package-desc-name pkg)))
+                                   approved-upgrades ", ")))))
           
           ;; Proceed with execution (only approved packages will be processed)
           (funcall orig-fun noquery))))))
@@ -834,24 +908,41 @@ Automatically cleans up diff buffers after approval/rejection."
         (forward-line)))
 
     (when (or unapproved-installs unapproved-upgrades)
-      (message "Unmarked %d unapproved package(s)"
-               (+ (length unapproved-installs)
-                  (length unapproved-upgrades))))))
+      (let ((unapproved-names 
+             (append 
+              (mapcar (lambda (pkg) (symbol-name (package-desc-name pkg))) unapproved-installs)
+              (mapcar (lambda (pkg) (symbol-name (package-desc-name pkg))) unapproved-upgrades))))
+        (message "Skipped %d rejected package(s): %s"
+                 (+ (length unapproved-installs) (length unapproved-upgrades))
+                 (mapconcat 'identity unapproved-names ", "))))))
 
 (defun package-upgrade-guard--upgrade-single-package (package-name)
   "Upgrade single package PACKAGE-NAME with diff check."
   (let* ((pkg-desc (cadr (assq package-name package-alist)))
+         (available (assq package-name package-archive-contents))
          (approved nil))
 
-    (if (and pkg-desc (package-vc-p pkg-desc))
-        ;; VC package - show git diff
-        (setq approved (package-upgrade-guard--show-vc-diff pkg-desc))
-      ;; Regular package
-      (let ((available (assq package-name package-archive-contents)))
-        (when available
-          (setq approved
-                (package-upgrade-guard--show-tarball-diff
-                 (cadr available))))))
+    ;; Check the new version from archive contents for exclusion
+    (let ((new-pkg-desc
+           (when available
+             (cadr available))))
+      (if (package-upgrade-guard--package-excluded-p new-pkg-desc)
+          ;; Package is excluded - skip security check
+          (progn
+            (message
+             "Skipping security check for excluded archive: %s"
+             (package-desc-archive new-pkg-desc))
+            (setq approved t))
+        ;; Regular security check
+        (if (and pkg-desc (package-vc-p pkg-desc))
+            ;; VC package - show git diff
+            (setq approved
+                  (package-upgrade-guard--show-vc-diff pkg-desc))
+          ;; Regular package
+          (when available
+            (setq approved
+                  (package-upgrade-guard--show-tarball-diff
+                   new-pkg-desc))))))
 
     (when approved
       ;; Call package-upgrade directly without advice to avoid double prompting

@@ -10,6 +10,7 @@ Package Upgrade Guard is an Emacs security tool that shows diffs for all package
 - 🔄 Works with ~package-upgrade~, ~package-upgrade-all~, and package menu operations
 - 📊 Displays file-by-file changes, new files, and deleted files
 - ⚡ Efficient TAR extraction for package analysis
+- ⚙️ Archive exclusion for trusted sources (auto-approve without diff review)
 
 * Screenshots
 
@@ -58,16 +59,62 @@ For ELPA/MELPA packages, the tool shows:
 - Files removed
 - Version information
 
+* Archive Exclusion
+
+Package Upgrade Guard allows you to exclude trusted package archives from diff checking. Packages from excluded archives are automatically approved and upgraded without showing diffs.
+
+** Use Cases
+
+- *Development Archives*: Skip diff checking for development versions of GNU ELPA packages (~gnu-elpa-devel~)
+- *Trusted Sources*: Auto-approve packages from official archives you trust
+- *Bulk Updates*: Reduce manual review for packages from specific sources
+
+** Configuration Example
+
+#+BEGIN_SRC emacs-lisp
+  ;; check
+  (symbol-value 'package-archives) ; -> e.g. (("melpa" . "https://melpa.org/packages/") ("gnu" . "https://elpa.gnu.org/packages/") ("nongnu" . "https://elpa.nongnu.org/nongnu/"))
+
+  ;; Skip diff checking for GNU ELPA development packages
+  (setopt package-upgrade-guard-excluded-archives '("gnu"))
+
+  ;; Or exclude multiple archives
+  (setopt package-upgrade-guard-excluded-archives '("gnu" "nongnu"))
+#+END_SRC
+
+** Behavior
+
+When a package from an excluded archive is encountered:
+
+1. ✅ Diff checking is automatically skipped
+2. ✅ Package is auto-approved for installation/upgrade
+3. ✅ Clear message indicates the automatic approval
+4. ✅ Manual review is still performed for non-excluded packages
+
+** Archive Name Reference
+
+Common archive names you might want to exclude:
+
+- ~"gnu"~ - GNU ELPA stable packages
+- ~"gnu-elpa-devel"~ - GNU ELPA development packages
+- ~"nongnu"~ - NonGNU ELPA stable packages
+- ~"nongnu-devel"~ - NonGNU ELPA development packages
+
+Note: ~"melpa"~ and other third-party archives should generally not be excluded for security reasons.
+
 * Configuration
 
 ** Customization Variables
 
 #+BEGIN_SRC emacs-lisp
 ;; Enable/disable the security checker
-(setq package-upgrade-guard-enabled t)
+(setopt package-upgrade-guard-enabled t)
 
 ;; Custom temporary directory for package extraction
-(setq package-upgrade-guard-temp-dir "/path/to/temp/dir")
+(setopt package-upgrade-guard-temp-dir "/path/to/temp/dir")
+
+;; Exclude trusted archives from diff checking (auto-approve)
+(setopt package-upgrade-guard-excluded-archives '("gnu"))
 #+END_SRC
 
 ** Advanced Configuration
@@ -76,6 +123,7 @@ The package provides several customization options through the ~package-upgrade-
 
 - ~package-upgrade-guard-enabled~ - Global enable/disable
 - ~package-upgrade-guard-temp-dir~ - Custom temporary directory
+- ~package-upgrade-guard-excluded-archives~ - List of archive names to auto-approve
 
 * Requirements
 
@@ -106,7 +154,7 @@ Package Diff Guard is designed for defensive security purposes:
 If you encounter permission errors, set a custom temporary directory:
 
 #+BEGIN_SRC emacs-lisp
-(setq package-upgrade-guard-temp-dir "~/tmp/package-upgrade-guard")
+(setopt package-upgrade-guard-temp-dir "~/tmp/package-upgrade-guard")
 #+END_SRC
 
 *** Git Errors for VC Packages
@@ -132,4 +180,5 @@ This program is free software; you can redistribute it and/or modify it under th
 
 * Version History
 
+- v1.1.0 - Added archive exclusion functionality for trusted sources
 - v1.0.0 - Initial release with tarball and VC package support

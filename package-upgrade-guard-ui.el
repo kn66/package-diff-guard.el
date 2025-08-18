@@ -129,6 +129,8 @@ Returns t if user approves, nil if rejected."
           (error
            (insert (format "Error getting diff: %s\n" err))))
 
+        (diff-mode)
+        (font-lock-ensure)
         (goto-char (point-min)))
 
       (display-buffer diff-buffer)

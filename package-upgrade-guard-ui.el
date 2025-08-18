@@ -53,6 +53,7 @@
           (package-upgrade-guard--generate-diff old-dir temp-dir)
 
           (diff-mode)
+          (read-only-mode 1)
           (goto-char (point-min)))
 
         (display-buffer diff-buffer)
@@ -130,6 +131,7 @@ Returns t if user approves, nil if rejected."
            (insert (format "Error getting diff: %s\n" err))))
 
         (diff-mode)
+        (read-only-mode 1)
         (font-lock-ensure)
         (goto-char (point-min)))
 

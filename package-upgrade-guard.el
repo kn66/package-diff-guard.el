@@ -159,19 +159,21 @@
 
         (message "Proceeding with individual diff checks...")
 
-        (dolist (package-name upgradeable)
-          (message "Checking package %d/%d: %s"
-                   (1+ upgraded)
-                   (length upgradeable)
-                   package-name)
-          (condition-case err
-              (when (package-upgrade-guard--upgrade-single-package
+        (let ((current-package 0))
+          (dolist (package-name upgradeable)
+            (setq current-package (1+ current-package))
+            (message "Checking package %d/%d: %s"
+                     current-package
+                     (length upgradeable)
                      package-name)
-                (setq upgraded (1+ upgraded)))
-            (error
-             (message "Failed to upgrade %s: %s"
-                      package-name
-                      (error-message-string err)))))
+            (condition-case err
+                (when (package-upgrade-guard--upgrade-single-package
+                       package-name)
+                  (setq upgraded (1+ upgraded)))
+              (error
+               (message "Failed to upgrade %s: %s"
+                        package-name
+                        (error-message-string err))))))
 
         (message
          "Diff-checked upgrade completed: %d/%d packages upgraded"
